@@ -34,12 +34,12 @@ using namespace std;
 ************************* */
 
 // b = \sum <a_i,s_i> + m + e
-// m comes with a scaling factor 
+// m comes with a scaling factor
 EXPORT void MKlweSymEncrypt(MKLweSample* result, Torus32 message, double alpha, const MKLweKey* key){
     const int32_t n = key->LWEparams->n;
     const int32_t parties = key->MKparams->parties;
-    
-    result->b = gaussian32(message, alpha); 
+
+    result->b = gaussian32(message, alpha);
 
     for (int i = 0; i < parties; ++i)
     {
@@ -47,24 +47,86 @@ EXPORT void MKlweSymEncrypt(MKLweSample* result, Torus32 message, double alpha, 
         {
             result->a[i*n +j] = uniformTorus32_distrib(generator);
             result->b += result->a[i*n +j]*key->key[i].key[j];
-        } 
+        }
     }
-    
+
     result->current_variance = alpha*alpha;
+}
+
+// b = <a_p,s_p> + m + e   for party p
+// m comes with a scaling factor
+EXPORT void MKlweFirstPartyEncrypt(MKLweSample *const result,
+                                   const int32_t p,   // party index
+                                   const Torus32 message,
+                                   const double alpha,
+                                   const MKLweKey *const key)
+{
+    const int32_t n = key->LWEparams->n;
+    const int32_t parties = key->MKparams->parties;
+
+    // init b with noise
+    result->b = gaussian32(message, alpha);
+
+    for (int i = 0; i < parties; ++i)
+    {
+        if (i == p)
+        {
+            // at p-th block of mask, generate a random mask and add to the masked message
+            for (int j = 0; j < n; ++j)
+            {
+                result->a[i*n + j] = uniformTorus32_distrib(generator);
+                result->b += result->a[i*n + j]*key->key[i].key[j];
+            }
+        }
+        else
+        {
+            // at other blocks of mask, fill zeros
+            for (int j = 0; j < n; ++j)
+                result->a[i*n + j] = 0.0;
+        }
+    }
+
+    result->current_variance = alpha*alpha;
+}
+
+// b = <a_p,s_p> + m + e   for party p
+// m comes with a scaling factor
+EXPORT void MKlweNthPartyEncrypt(MKLweSample *const result,
+                                 const int32_t p,   // party index
+                                 const Torus32 message,
+                                 const double alpha,
+                                 const MKLweKey *const key)
+{
+    const int32_t n = key->LWEparams->n;
+    const int32_t parties = key->MKparams->parties;
+    assert(p < parties);
+
+    // add own noise to b
+    result->b += gaussian32(message, alpha);
+
+    // at p-th block of mask, generate a random mask and add to the masked message
+    for (int j = 0; j < n; ++j)
+    {
+        assert(result->a[p*n + j] == 0.0);
+        result->a[p*n + j] = uniformTorus32_distrib(generator);
+        result->b += result->a[p*n + j]*key->key[p].key[j];
+    }
+
+    result->current_variance += alpha*alpha;
 }
 
 
 
-/* 
+/*
  * This function encrypts a message by using key and a given noise value
 */
-EXPORT void MKlweSymEncryptWithExternalNoise(MKLweSample* result, Torus32 message, double noise, double alpha, 
+EXPORT void MKlweSymEncryptWithExternalNoise(MKLweSample* result, Torus32 message, double noise, double alpha,
         const MKLweKey* key)
 {
     const int32_t n = key->LWEparams->n;
     const int32_t parties = key->MKparams->parties;
-    
-    result->b = message + dtot32(noise); 
+
+    result->b = message + dtot32(noise);
 
     for (int i = 0; i < parties; ++i)
     {
@@ -72,9 +134,9 @@ EXPORT void MKlweSymEncryptWithExternalNoise(MKLweSample* result, Torus32 messag
         {
             result->a[i*n +j] = uniformTorus32_distrib(generator);
             result->b += result->a[i*n +j]*key->key[i].key[j];
-        } 
+        }
     }
-    
+
     result->current_variance = alpha*alpha;
 }
 
@@ -89,7 +151,7 @@ EXPORT void MKlweSymEncryptWithExternalNoise(MKLweSample* result, Torus32 messag
 EXPORT Torus32 MKlwePhase(const MKLweSample* sample, const MKLweKey* key){
     const int32_t n = key->LWEparams->n;
     const int32_t parties = key->MKparams->parties;
-    
+
     Torus32 axs = 0;
 
     for (int i = 0; i < parties; ++i)
@@ -97,7 +159,7 @@ EXPORT Torus32 MKlwePhase(const MKLweSample* sample, const MKLweKey* key){
         for (int j = 0; j < n; ++j)
         {
             axs += sample->a[i*n +j]*key->key[i].key[j];
-        } 
+        }
     }
 
     return sample->b - axs;
@@ -132,7 +194,7 @@ EXPORT void MKlweNoiselessTrivial(MKLweSample* result, Torus32 mu, const MKTFHEP
         for (int j = 0; j < n; ++j)
         {
             result->a[i*n +j] = 0;
-        } 
+        }
     }
 
     result->b = mu;
@@ -154,10 +216,10 @@ EXPORT void MKlweSubTo(MKLweSample* result, const MKLweSample* sample, const MKT
             result->a[i*n+j] -= sample->a[i*n+j];
         }
     }
-    
+
     result->b -= sample->b;
 
-    result->current_variance += sample->current_variance; 
+    result->current_variance += sample->current_variance;
 }
 
 
@@ -173,7 +235,7 @@ EXPORT void MKlweCopy(MKLweSample* result, const MKLweSample* sample, const MKTF
             result->a[i*n+j] = sample->a[i*n+j];
         }
     }
-    
+
     result->b = sample->b;
 
     result->current_variance = sample->current_variance;
@@ -206,7 +268,7 @@ EXPORT void MKlweCopy(MKLweSample* result, const MKLweSample* sample, const MKTF
 
 
 // b = \sum <a_i,s_i> + m + e
-// m comes with a scaling factor 
+// m comes with a scaling factor
 EXPORT void MKtLweSymEncrypt(MKTLweSample *result, TorusPolynomial *message, double alpha, const MKRLweKey *key) {
     const int32_t N = key->RLWEparams->N;
     const int32_t parties = key->MKparams->parties;
@@ -230,7 +292,7 @@ EXPORT void MKtLweSymEncrypt(MKTLweSample *result, TorusPolynomial *message, dou
 
 
 // b = \sum <a_i,s_i> + m + e
-// m constant message, comes with a scaling factor 
+// m constant message, comes with a scaling factor
 EXPORT void MKtLweSymEncryptT(MKTLweSample *result, Torus32 message, double alpha, const MKRLweKey *key) {
     const int32_t N = key->RLWEparams->N;
     const int32_t parties = key->MKparams->parties;
@@ -362,8 +424,8 @@ EXPORT void MKtLweCopy(MKTLweSample *result, const MKTLweSample *sample, const M
 
 
 // external multiplication of ACC by X^ai-1
-EXPORT void MKtLweMulByXaiMinusOne(MKTLweSample *result, int32_t ai, const MKTLweSample *ACC, 
-        const MKTFHEParams *MKparams) 
+EXPORT void MKtLweMulByXaiMinusOne(MKTLweSample *result, int32_t ai, const MKTLweSample *ACC,
+        const MKTFHEParams *MKparams)
 {
     const int32_t parties = MKparams->parties;
 
@@ -396,8 +458,8 @@ EXPORT void MKtLweAddTo(MKTLweSample *result, const MKTLweSample *sample, const 
 
 
 // EXTRACT
-EXPORT void MKtLweExtractMKLweSampleIndex(MKLweSample* result, const MKTLweSample* x, const int32_t index, 
-        const MKTFHEParams* MKparams) 
+EXPORT void MKtLweExtractMKLweSampleIndex(MKLweSample* result, const MKTLweSample* x, const int32_t index,
+        const MKTFHEParams* MKparams)
 {
     const int32_t parties = MKparams->parties;
     const int32_t N = MKparams->N;
@@ -478,8 +540,8 @@ EXPORT void MKtLweExtractMKLweSample(MKLweSample* result, const MKTLweSample* x,
 // same function as tGswTorus32PolynomialDecompH, without the assembly
 // (t_0, ..., t_N-1) -> (I_0, ...,I_dg-1)
 // decomp_g(t_j) = (I0,j, ..., Idg-1,j)
-EXPORT void MKtGswTorus32PolynomialDecompG(IntPolynomial *result, const TorusPolynomial *sample, 
-        const MKTFHEParams *params) 
+EXPORT void MKtGswTorus32PolynomialDecompG(IntPolynomial *result, const TorusPolynomial *sample,
+        const MKTFHEParams *params)
 {
     const int32_t N = params->N;
     const int32_t dg = params->dg;
@@ -495,7 +557,7 @@ EXPORT void MKtGswTorus32PolynomialDecompG(IntPolynomial *result, const TorusPol
     //First, add offset to everyone
     for (int32_t j = 0; j < N; ++j) buf[j] += offset;
 
-    //then, do the decomposition 
+    //then, do the decomposition
     for (int32_t p = 0; p < dg; ++p) {
         const int32_t decal = (32 - (p + 1) * Bgbit);
         int32_t *res_p = result[p].coefs;
@@ -514,7 +576,7 @@ EXPORT void MKtGswTorus32PolynomialDecompG(IntPolynomial *result, const TorusPol
 
 
 
-EXPORT void MKtGswTorus32PolynomialDecompGassembly(IntPolynomial *result, const TorusPolynomial *sample, 
+EXPORT void MKtGswTorus32PolynomialDecompGassembly(IntPolynomial *result, const TorusPolynomial *sample,
         const MKTFHEParams *params)
 {
     const int32_t N = params->N;
@@ -657,7 +719,7 @@ EXPORT void MKtGswTorus32PolynomialDecompGassembly(IntPolynomial *result, const 
 // External product FFT
 
 // result += poly1*poly2
-EXPORT void MulFFTAndAddTo(TorusPolynomial* result, const LagrangeHalfCPolynomial* poly1, 
+EXPORT void MulFFTAndAddTo(TorusPolynomial* result, const LagrangeHalfCPolynomial* poly1,
         const LagrangeHalfCPolynomial* poly2, const int32_t N)
 {
     LagrangeHalfCPolynomial* tempFFT = new_LagrangeHalfCPolynomial(N);
@@ -669,10 +731,10 @@ EXPORT void MulFFTAndAddTo(TorusPolynomial* result, const LagrangeHalfCPolynomia
 
     delete_TorusPolynomial(temp);
     delete_LagrangeHalfCPolynomial(tempFFT);
-} 
+}
 
 // result -= poly1*poly2
-EXPORT void MulFFTAndSubTo(TorusPolynomial* result, const LagrangeHalfCPolynomial* poly1, 
+EXPORT void MulFFTAndSubTo(TorusPolynomial* result, const LagrangeHalfCPolynomial* poly1,
         const LagrangeHalfCPolynomial* poly2, const int32_t N)
 {
     LagrangeHalfCPolynomial* tempFFT = new_LagrangeHalfCPolynomial(N);
@@ -684,7 +746,7 @@ EXPORT void MulFFTAndSubTo(TorusPolynomial* result, const LagrangeHalfCPolynomia
 
     delete_TorusPolynomial(temp);
     delete_LagrangeHalfCPolynomial(tempFFT);
-} 
+}
 
 
 
@@ -708,7 +770,7 @@ EXPORT void MulFFTAndSubTo(TorusPolynomial* result, const LagrangeHalfCPolynomia
 ****************************** KEY SWITCHING **************************************
 ******************************************************************************** */
 
-EXPORT void MKlweKeySwitch(MKLweSample* result, const LweKeySwitchKey* ks, const MKLweSample* sample, 
+EXPORT void MKlweKeySwitch(MKLweSample* result, const LweKeySwitchKey* ks, const MKLweSample* sample,
         const LweParams* LWEparams, const MKTFHEParams* MKparams)
 {
     const int32_t n_extract = MKparams->n_extract;
@@ -721,7 +783,7 @@ EXPORT void MKlweKeySwitch(MKLweSample* result, const LweKeySwitchKey* ks, const
     const int32_t n = LWEparams->n;
 
     LweSample* temp = new_LweSample(LWEparams);
- 
+
     // result = (b, 0,...,0)
     MKlweNoiselessTrivial(result, sample->b, MKparams);
 
@@ -738,7 +800,7 @@ EXPORT void MKlweKeySwitch(MKLweSample* result, const LweKeySwitchKey* ks, const
             for (int j = 0; j < dks; ++j)
             {
                 const uint32_t aij = (aibar >> (32-(j+1)*Bksbit)) & mask;
-                if(aij != 0) 
+                if(aij != 0)
                 {
                     lweSubTo(temp, &ks[p].ks[i][j][aij], LWEparams);
                 }
@@ -749,8 +811,8 @@ EXPORT void MKlweKeySwitch(MKLweSample* result, const LweKeySwitchKey* ks, const
         result->b += temp->b;
         for (int i = 0; i < n; ++i)
         {
-            result->a[p*n +i] = temp->a[i]; 
-        }        
+            result->a[p*n +i] = temp->a[i];
+        }
     }
 
     /*
@@ -763,7 +825,7 @@ EXPORT void MKlweKeySwitch(MKLweSample* result, const LweKeySwitchKey* ks, const
             for (int j = 0; j < dks; ++j)
             {
                 const uint32_t aij = (aibar >> (32-(j+1)*Bksbit)) & mask;
-                if(aij != 0) 
+                if(aij != 0)
                 {
                     MKlweSubTo(result, &ks->ks[p][i][j][aij], MKparams);
                 }
@@ -934,7 +996,7 @@ EXPORT void MKTGswUniEncrypt_v2(MKTGswUESample_v2 *result, IntPolynomial *messag
     for (int j = 0; j < N; ++j){
         r->coefs[j] = distribution(generator);
     }
-            
+
 
     // d = r*Pkey_parties + m*g + E1 \in T^dg
     for (int i = 0; i < dg; ++i)
@@ -948,15 +1010,15 @@ EXPORT void MKTGswUniEncrypt_v2(MKTGswUESample_v2 *result, IntPolynomial *messag
         }
 
         // d = r*Pkey_parties[i] + E1 + m*g[i]
-        torusPolynomialAddMulR(&result->d[i], r, &key->Pkey[parties*dg + i]);   
+        torusPolynomialAddMulR(&result->d[i], r, &key->Pkey[parties*dg + i]);
     }
 
 
     // F = (f0,f1) \in T^2dg, with f0 = s_party*f1 + e_f + r*g
     for (int i = 0; i < dg; ++i)
     {
-        // f1 
-        torusPolynomialUniform(&result->f1[i]); 
+        // f1
+        torusPolynomialUniform(&result->f1[i]);
 
         // f0 = e_f[i] + r*g[i]
         for (int j = 0; j < N; ++j)
@@ -965,10 +1027,10 @@ EXPORT void MKTGswUniEncrypt_v2(MKTGswUESample_v2 *result, IntPolynomial *messag
             result->f0[i].coefsT[j] += r->coefs[j] * key->MKparams->g[i]; // r*g[i]
         }
 
-        torusPolynomialAddMulR(&result->f0[i], key->key[party].key, &result->f1[i]);       
+        torusPolynomialAddMulR(&result->f0[i], key->key[party].key, &result->f1[i]);
     }
-    
-   
+
+
     result->current_variance = alpha * alpha;
     delete_IntPolynomial(r);
 }
@@ -990,15 +1052,15 @@ EXPORT void MKTGswUniEncryptI_v2(MKTGswUESample_v2 *result, int32_t message, int
     uniform_int_distribution<int32_t> distribution(0, 1);
     IntPolynomial* r = new_IntPolynomial(N);
 
-    
+
     // cout << "r = "; // just for verification of f part
     for (int j = 0; j < N; ++j){
         r->coefs[j] = distribution(generator);
-        // cout << r->coefs[j] << " "; // just for verification of f part 
+        // cout << r->coefs[j] << " "; // just for verification of f part
     }
-    // cout << endl; // just for verification of f part 
-    
-   
+    // cout << endl; // just for verification of f part
+
+
 
 
 
@@ -1010,27 +1072,27 @@ EXPORT void MKTGswUniEncryptI_v2(MKTGswUESample_v2 *result, int32_t message, int
         {
             // d = E1
             result->d[i].coefsT[j] = gaussian32(0, alpha); // E1
-            // cout << result->d[i].coefsT[j] << ", "; 
+            // cout << result->d[i].coefsT[j] << ", ";
         }
         //cout << endl;
         // d = E1 + m*g[i]
         result->d[i].coefsT[0] += message * key->MKparams->g[i]; // m*g[i]
 
-        // d1 = r*Pkey_parties[i] + E1 + m*g[i] 
-        torusPolynomialAddMulR(&result->d[i], r, &key->Pkey[dg*parties + i]); 
+        // d1 = r*Pkey_parties[i] + E1 + m*g[i]
+        torusPolynomialAddMulR(&result->d[i], r, &key->Pkey[dg*parties + i]);
         //cout << "d1 vec = ";
         //for(int j = 0; j < N; j++){
-        //    cout << result->d[dg+i].coefsT[j] << ", "; 
+        //    cout << result->d[dg+i].coefsT[j] << ", ";
         // }
-        //cout << endl;  
+        //cout << endl;
     }
 
 
     // F = (f0,f1) \in T^2dg, with f0 = s_party*f1 + e_f + r*g
     for (int i = 0; i < dg; ++i)
     {
-        // f1 
-        torusPolynomialUniform(&result->f1[i]); 
+        // f1
+        torusPolynomialUniform(&result->f1[i]);
 
         // f0 = e_f[i] + r*g[i]
         for (int j = 0; j < N; ++j)
@@ -1039,9 +1101,9 @@ EXPORT void MKTGswUniEncryptI_v2(MKTGswUESample_v2 *result, int32_t message, int
             result->f0[i].coefsT[j] += r->coefs[j] * key->MKparams->g[i]; // r*g[i]
         }
         // f0 = s_party*f1 + e_f + r*g
-        torusPolynomialAddMulR(&result->f0[i], key->key[party].key, &result->f1[i]);       
+        torusPolynomialAddMulR(&result->f0[i], key->key[party].key, &result->f1[i]);
     }
-      
+
 
     result->current_variance = alpha * alpha;
     delete_IntPolynomial(r);
@@ -1064,13 +1126,13 @@ EXPORT void MKTGswUniEncryptI_v2(MKTGswUESample_v2 *result, int32_t message, int
 EXPORT void MKtGswSymDecrypt_v2(TorusPolynomial *result, const MKTGswUESample_v2 *sample, const MKRLweKey *key) {
     const int32_t dg = key->MKparams->dg;
     const int32_t party = sample->party;
-    
+
 
     for (int j = 0; j < dg; ++j)
     {
-        // f part 
-        torusPolynomialCopy(&result[j], &sample->f0[j]); // phi = f0[j] 
-        // phi = f0 - f1*s_party 
+        // f part
+        torusPolynomialCopy(&result[j], &sample->f0[j]); // phi = f0[j]
+        // phi = f0 - f1*s_party
         torusPolynomialSubMulR(&result[j], key->key[party].key, &sample->f1[j]);
     }
 
@@ -1087,8 +1149,8 @@ EXPORT void MKtGswSymDecrypt_v2(TorusPolynomial *result, const MKTGswUESample_v2
 
 /* EXPAND */
 // (d,F) = (d,f0,f1) -> D_i=(x_0, ..., x_{parties-1}, x_parties + d_i, y_0, ..., d_i+y_i, ..., y_parties, d_i)
-EXPORT void MKTGswExpand_v2(MKTGswExpSample_v2 *result, const MKTGswUESample_v2 *sample, const MKRLweKey *key, 
-    const MKTFHEParams* MKparams) 
+EXPORT void MKTGswExpand_v2(MKTGswExpSample_v2 *result, const MKTGswUESample_v2 *sample, const MKRLweKey *key,
+    const MKTFHEParams* MKparams)
 {
     const int32_t N = key->RLWEparams->N;
     const int32_t dg = key->MKparams->dg;
@@ -1107,7 +1169,7 @@ EXPORT void MKTGswExpand_v2(MKTGswExpSample_v2 *result, const MKTGswUESample_v2 
             torusPolynomialClearN(&result->x[i*dg + j], N);
         }
         torusPolynomialCopyN(&result->x[parties*dg + j], &sample->d[j], N);
-        
+
         // initialize all the y_i as 0
         // initialize y_party as d_i (y[party*dg +j] = d[j])
         for (int i = 0; i <= parties; ++i)
@@ -1125,8 +1187,8 @@ EXPORT void MKTGswExpand_v2(MKTGswExpSample_v2 *result, const MKTGswUESample_v2 
     TorusPolynomial* Y = new_TorusPolynomial(N);
     IntPolynomial* u = new_IntPolynomial_array(dg, N);
 
-    // i < parties 
-    for (int i = 0; i < parties; ++i) 
+    // i < parties
+    for (int i = 0; i < parties; ++i)
     {
         for (int j = 0; j < dg; ++j)
         {
@@ -1140,17 +1202,17 @@ EXPORT void MKTGswExpand_v2(MKTGswExpSample_v2 *result, const MKTGswUESample_v2 
             {
                 // X = x_i[j] = <g^{-1}(b_i[j]), f0>
                 torusPolynomialAddMulRFFTN(X, &u[l], &sample->f0[l], N);
-                // Y = y_i[j] = <g^{-1}(b_i[j]), f1> 
-                torusPolynomialAddMulRFFTN(Y, &u[l], &sample->f1[l], N);          
+                // Y = y_i[j] = <g^{-1}(b_i[j]), f1>
+                torusPolynomialAddMulRFFTN(Y, &u[l], &sample->f1[l], N);
             }
-            
+
             // x_i
             torusPolynomialAddTo1(&result->x[i*dg + j], X); // N = X->N
             // y_i
             torusPolynomialAddTo1(&result->y[i*dg + j], Y); // N = Y->N
-        }   
+        }
     }
-    
+
     // i = parties, i.e. b_i = a
     for (int j = 0; j < dg; ++j)
     {
@@ -1164,21 +1226,21 @@ EXPORT void MKTGswExpand_v2(MKTGswExpSample_v2 *result, const MKTGswUESample_v2 
         {
             // X = x_i[j] = <g^{-1}(a[j]), f0>
             torusPolynomialAddMulRFFTN(X, &u[l], &sample->f0[l], N);
-            // Y = y_i[j] = <g^{-1}(a[j]), f1> 
-            torusPolynomialAddMulRFFTN(Y, &u[l], &sample->f1[l], N);          
+            // Y = y_i[j] = <g^{-1}(a[j]), f1>
+            torusPolynomialAddMulRFFTN(Y, &u[l], &sample->f1[l], N);
         }
-        
+
         // x_i
         torusPolynomialSubTo1(&result->x[parties*dg + j], X); // N = X->N
         // y_i
         torusPolynomialSubTo1(&result->y[parties*dg + j], Y); // N = Y->N
-    }   
+    }
 
 
     result->party = sample->party;
     // TODO: fix this
     result->current_variance = sample->current_variance;
-    
+
     delete_TorusPolynomial(X);
     delete_TorusPolynomial(Y);
     delete_IntPolynomial_array(dg, u);
@@ -1192,8 +1254,8 @@ EXPORT void MKTGswExpand_v2(MKTGswExpSample_v2 *result, const MKTGswUESample_v2 
 /* EXPAND */
 // (d,F) = (d,f0,f1) -> D_i=(x_0, ..., x_{parties-1}, x_parties + d_i, y_0, ..., d_i+y_i, ..., y_perties, d_i)
 // sample UE --> resultFFT expand
-EXPORT void MKTGswExpandFFT_v2(MKTGswExpSampleFFT_v2 *resultFFT, const MKTGswUESampleFFT_v2* sampleFFT, const MKRLweKey *key, 
-        const TLweParams* RLWEparams, const MKTFHEParams* MKparams) 
+EXPORT void MKTGswExpandFFT_v2(MKTGswExpSampleFFT_v2 *resultFFT, const MKTGswUESampleFFT_v2* sampleFFT, const MKRLweKey *key,
+        const TLweParams* RLWEparams, const MKTFHEParams* MKparams)
 {
     const int32_t N = key->RLWEparams->N;
     const int32_t dg = key->MKparams->dg;
@@ -1203,7 +1265,7 @@ EXPORT void MKTGswExpandFFT_v2(MKTGswExpSampleFFT_v2 *resultFFT, const MKTGswUES
 
     LagrangeHalfCPolynomial* tempFFT = new_LagrangeHalfCPolynomial(N);
 
-    
+
     // INITIALIZE
     // D_i=(0, ..., 0, d_i, 0, ..., d_i, ..., 0, d_i)
     for (int j = 0; j < dg; ++j)
@@ -1223,7 +1285,7 @@ EXPORT void MKTGswExpandFFT_v2(MKTGswExpSampleFFT_v2 *resultFFT, const MKTGswUES
             LagrangeHalfCPolynomialClear(&resultFFT->y[i*dg + j]);
         }
         LagrangeHalfCPolynomialCopy(&resultFFT->y[party*dg + j], &sampleFFT->d[j]);
-        
+
         // d_i = d_i (d[j] = d[j])
         LagrangeHalfCPolynomialCopy(&resultFFT->d[j], &sampleFFT->d[j]);
     }
@@ -1239,8 +1301,8 @@ EXPORT void MKTGswExpandFFT_v2(MKTGswExpSampleFFT_v2 *resultFFT, const MKTGswUES
     LagrangeHalfCPolynomial *uFFT = new_LagrangeHalfCPolynomial_array(dg, N); //fft version
 
 
-    // i < parties 
-    for (int i = 0; i < parties; ++i) 
+    // i < parties
+    for (int i = 0; i < parties; ++i)
     {
         for (int j = 0; j < dg; ++j)
         {
@@ -1258,19 +1320,19 @@ EXPORT void MKTGswExpandFFT_v2(MKTGswExpSampleFFT_v2 *resultFFT, const MKTGswUES
                 // X = xi[j] = <g^{-1}(b_i[j]), f0>
                 LagrangeHalfCPolynomialMul(tempFFT, &uFFT[l], &sampleFFT->f0[l]);
                 LagrangeHalfCPolynomialAddTo(X, tempFFT);
-                // Y = yi[j] = <g^{-1}(b_i[j]), f1> 
+                // Y = yi[j] = <g^{-1}(b_i[j]), f1>
                 LagrangeHalfCPolynomialMul(tempFFT, &uFFT[l], &sampleFFT->f1[l]);
-                LagrangeHalfCPolynomialAddTo(Y, tempFFT);         
+                LagrangeHalfCPolynomialAddTo(Y, tempFFT);
             }
-            
+
             // x_i
             LagrangeHalfCPolynomialAddTo(&resultFFT->x[i*dg + j], X);
             // y_i
             LagrangeHalfCPolynomialAddTo(&resultFFT->y[i*dg + j], Y);
-        }   
+        }
     }
 
-    // i = parties, i.e. b_i = a 
+    // i = parties, i.e. b_i = a
     for (int j = 0; j < dg; ++j)
     {
         // g^{-1}(a[j]) = [u_0, ...,u_dg-1] intPolynomials
@@ -1287,17 +1349,17 @@ EXPORT void MKTGswExpandFFT_v2(MKTGswExpSampleFFT_v2 *resultFFT, const MKTGswUES
             // X = xi[j] = <g^{-1}(a[j]), f0>
             LagrangeHalfCPolynomialMul(tempFFT, &uFFT[l], &sampleFFT->f0[l]);
             LagrangeHalfCPolynomialAddTo(X, tempFFT);
-            // Y = yi[j] = <g^{-1}(a[j]), f1> 
+            // Y = yi[j] = <g^{-1}(a[j]), f1>
             LagrangeHalfCPolynomialMul(tempFFT, &uFFT[l], &sampleFFT->f1[l]);
-            LagrangeHalfCPolynomialAddTo(Y, tempFFT);         
+            LagrangeHalfCPolynomialAddTo(Y, tempFFT);
         }
-        
+
         // x_i
         LagrangeHalfCPolynomialSubTo(&resultFFT->x[parties*dg + j], X);
         // y_i
         LagrangeHalfCPolynomialSubTo(&resultFFT->y[parties*dg + j], Y);
-    }   
-    
+    }
+
 
 
 
@@ -1306,16 +1368,16 @@ EXPORT void MKTGswExpandFFT_v2(MKTGswExpSampleFFT_v2 *resultFFT, const MKTGswUES
     resultFFT->party = sampleFFT->party;
     // TODO: fix this
     resultFFT->current_variance = sampleFFT->current_variance;
-    
 
 
-    // delete 
+
+    // delete
     delete_LagrangeHalfCPolynomial_array(dg, uFFT);
     delete_IntPolynomial_array(dg, u);
     delete_LagrangeHalfCPolynomial(Y);
     delete_LagrangeHalfCPolynomial(X);
     delete_LagrangeHalfCPolynomial(tempFFT);
-   
+
 }
 
 
@@ -1342,9 +1404,9 @@ EXPORT void MKTGswExpandFFT_v2(MKTGswExpSampleFFT_v2 *resultFFT, const MKTGswUES
 ******************************************************************************** */
 
 
-// c' = G^{-1}(c)*C, with C = (d, F) = (d, f0, f1) 
-EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* sample, 
-        const MKTGswUESample_v2* sampleUE, 
+// c' = G^{-1}(c)*C, with C = (d, F) = (d, f0, f1)
+EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* sample,
+        const MKTGswUESample_v2* sampleUE,
         const TLweParams* RLWEparams,
         const MKTFHEParams* MKparams,
         const MKRLweKey *RLWEkey)
@@ -1356,7 +1418,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
 
 
     // DECOMPOSE sample
-    // uDec[i] = g^{-1}(a_i), uDec[parties] = g^{-1}(b), 
+    // uDec[i] = g^{-1}(a_i), uDec[parties] = g^{-1}(b),
     IntPolynomial* uDec = new_IntPolynomial_array((parties+1)*dg, N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1365,7 +1427,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
 
 
 
-    // u[i] = uDec[i] * d 
+    // u[i] = uDec[i] * d
     TorusPolynomial* u = new_TorusPolynomial_array(parties+1, N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1376,7 +1438,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
         }
     }
 
-    // v[i] = uDec[i] * b_i, for i < parties  
+    // v[i] = uDec[i] * b_i, for i < parties
     TorusPolynomial* v = new_TorusPolynomial_array(parties+1, N);
     for (int i = 0; i < parties; ++i)
     {
@@ -1392,11 +1454,11 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
     {
         torusPolynomialSubMulRFFTN(&v[parties], &uDec[parties*dg+j], &RLWEkey->Pkey[parties*dg + j], N);
     }
-    
+
 
 
     // Decompose v
-    // vDec[i] = g^{-1}(v[i]) 
+    // vDec[i] = g^{-1}(v[i])
     IntPolynomial* vDec = new_IntPolynomial_array((parties+1)*dg, N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1404,7 +1466,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
     }
 
 
-    // w0[i] = vDec[i] * f0 
+    // w0[i] = vDec[i] * f0
     TorusPolynomial* w0 = new_TorusPolynomial_array(parties+1, N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1414,7 +1476,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
             torusPolynomialAddMulRFFTN(&w0[i], &vDec[i*dg+j], &sampleUE->f0[j], N);
         }
     }
-    // w1[i] = vDec[i] * f1 
+    // w1[i] = vDec[i] * f1
     TorusPolynomial* w1 = new_TorusPolynomial_array(parties+1, N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1433,7 +1495,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
     for (int i = 0; i < party; ++i)
     {
         torusPolynomialCopyN(&result->a[i], &u[i], N);
-        
+
     }
     for (int i = party+1; i < parties; ++i)
     {
@@ -1441,7 +1503,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
     }
 
 
-    // c'_party = u[party] + \sum w1[i] 
+    // c'_party = u[party] + \sum w1[i]
     torusPolynomialCopyN(&result->a[party], &u[party], N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1449,7 +1511,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
     }
 
 
-    // c'_parties = u[parties] + \sum w0[i] 
+    // c'_parties = u[parties] + \sum w0[i]
     torusPolynomialCopyN(&result->a[parties], &u[parties], N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1474,10 +1536,10 @@ EXPORT void MKtGswUEExternMulToMKtLwe_v2m2(MKTLweSample* result, MKTLweSample* s
 
 
 
-// c' = G^{-1}(c)*C, with C = (d, F) = (d, f0, f1) 
+// c' = G^{-1}(c)*C, with C = (d, F) = (d, f0, f1)
 // result is not in FFT
-EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSample* sample, 
-        const MKTGswUESampleFFT_v2* sampleUEFFT, 
+EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSample* sample,
+        const MKTGswUESampleFFT_v2* sampleUEFFT,
         const TLweParams* RLWEparams,
         const MKTFHEParams* MKparams,
         const MKRLweKey *RLWEkey)
@@ -1490,7 +1552,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
 
 
     // DECOMPOSE sample and convert it to FFT
-    // uDec[i*dg] = g^{-1}(a_i), uDec[parties*dg] = g^{-1}(b), 
+    // uDec[i*dg] = g^{-1}(a_i), uDec[parties*dg] = g^{-1}(b),
     IntPolynomial* uDec = new_IntPolynomial_array(parties1dg, N);
     LagrangeHalfCPolynomial *uDecFFT = new_LagrangeHalfCPolynomial_array(parties1dg, N); //fft version
     for (int i = 0; i <= parties; ++i){
@@ -1501,12 +1563,12 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
     }
 
 
-    
 
-    
+
+
 
     // uFFT[i] = uDecFFT[i] * dFFT
-    // LagrangeHalfCPolynomial *uFFT = new_LagrangeHalfCPolynomial_array(parties+1, N); 
+    // LagrangeHalfCPolynomial *uFFT = new_LagrangeHalfCPolynomial_array(parties+1, N);
     TorusPolynomial *u = new_TorusPolynomial_array(parties+1, N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1524,7 +1586,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
 
 
     // computed non in FFT because it needs to be decomposed
-    // v[i] = uDec[i] * b_i, for i < parties  
+    // v[i] = uDec[i] * b_i, for i < parties
     TorusPolynomial* v = new_TorusPolynomial_array(parties+1, N);
     for (int i = 0; i < parties; ++i)
     {
@@ -1541,7 +1603,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
         torusPolynomialSubMulRFFTN(&v[parties], &uDec[parties*dg+j], &RLWEkey->Pkey[parties*dg + j], N);
     }
     // Decompose v and convert it in FFT
-    // vDec[i] = g^{-1}(v[i]) 
+    // vDec[i] = g^{-1}(v[i])
     IntPolynomial* vDec = new_IntPolynomial_array(parties1dg, N);
     LagrangeHalfCPolynomial *vDecFFT = new_LagrangeHalfCPolynomial_array(parties1dg, N); //fft version
     for (int i = 0; i <= parties; ++i)
@@ -1550,11 +1612,11 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
     }
     for (int p = 0; p < parties1dg; ++p){
         IntPolynomial_ifft(&vDecFFT[p], &vDec[p]); // FFT
-    } 
+    }
 
 
     // w0FFT[i] = vDecFFT[i] * f0FFT
-    //LagrangeHalfCPolynomial *w0FFT = new_LagrangeHalfCPolynomial_array(parties+1, N); 
+    //LagrangeHalfCPolynomial *w0FFT = new_LagrangeHalfCPolynomial_array(parties+1, N);
     TorusPolynomial *w0 = new_TorusPolynomial_array(parties+1, N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1569,7 +1631,7 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
         }
     }
     // w1FFT[i] = vDecFFT[i] * f1FFT
-    // LagrangeHalfCPolynomial *w1FFT = new_LagrangeHalfCPolynomial_array(parties+1, N); 
+    // LagrangeHalfCPolynomial *w1FFT = new_LagrangeHalfCPolynomial_array(parties+1, N);
     TorusPolynomial *w1 = new_TorusPolynomial_array(parties+1, N);
     for (int i = 0; i <= parties; ++i)
     {
@@ -1595,17 +1657,17 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
     for (int i = 0; i < party; ++i)
     {
         torusPolynomialCopyN(&result->a[i], &u[i], N);
-        //TorusPolynomial_fft(&result->a[i], &uFFT[i]); // invFFT        
+        //TorusPolynomial_fft(&result->a[i], &uFFT[i]); // invFFT
     }
     for (int i = party+1; i < parties; ++i)
     {
         torusPolynomialCopyN(&result->a[i], &u[i], N);
-        //TorusPolynomial_fft(&result->a[i], &uFFT[i]); // invFFT 
+        //TorusPolynomial_fft(&result->a[i], &uFFT[i]); // invFFT
     }
 
 
 
-    // c'_party = invFFT( uFFT[party] + \sum w1FFT[i] ) 
+    // c'_party = invFFT( uFFT[party] + \sum w1FFT[i] )
     // LagrangeHalfCPolynomialClear(tempFFT);
     // LagrangeHalfCPolynomialCopy(tempFFT, &uFFT[party]);
     torusPolynomialCopyN(&result->a[party], &u[party], N);
@@ -1614,11 +1676,11 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
         torusPolynomialAddTo1(&result->a[party], &w1[i]);
         // LagrangeHalfCPolynomialAddTo(tempFFT, &w1FFT[i]);
     }
-    // TorusPolynomial_fft(&result->a[party], tempFFT); // invFFT  
+    // TorusPolynomial_fft(&result->a[party], tempFFT); // invFFT
 
 
 
-    // c'_parties = invFFT( uFFT[parties] + \sum w0FFT[i] ) 
+    // c'_parties = invFFT( uFFT[parties] + \sum w0FFT[i] )
     // LagrangeHalfCPolynomialClear(tempFFT);
     // LagrangeHalfCPolynomialCopy(tempFFT, &uFFT[parties]);
     torusPolynomialCopyN(&result->a[parties], &u[parties], N);
@@ -1627,16 +1689,16 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
         torusPolynomialAddTo1(&result->a[parties], &w0[i]);
         // LagrangeHalfCPolynomialAddTo(tempFFT, &w0FFT[i]);
     }
-    //TorusPolynomial_fft(&result->a[parties], tempFFT); // invFFT  
+    //TorusPolynomial_fft(&result->a[parties], tempFFT); // invFFT
 
 
 
-    // TODO current_variance   
-    // delete_LagrangeHalfCPolynomial_array(parties+1, w1FFT); 
-    // delete_LagrangeHalfCPolynomial_array(parties+1, w0FFT); 
-    delete_TorusPolynomial_array(parties+1, w1); 
-    delete_TorusPolynomial_array(parties+1, w0); 
-    delete_LagrangeHalfCPolynomial_array(parties1dg, vDecFFT); 
+    // TODO current_variance
+    // delete_LagrangeHalfCPolynomial_array(parties+1, w1FFT);
+    // delete_LagrangeHalfCPolynomial_array(parties+1, w0FFT);
+    delete_TorusPolynomial_array(parties+1, w1);
+    delete_TorusPolynomial_array(parties+1, w0);
+    delete_LagrangeHalfCPolynomial_array(parties1dg, vDecFFT);
     delete_IntPolynomial_array(parties1dg, vDec);
     delete_TorusPolynomial_array(parties+1, v);
     delete_TorusPolynomial_array(parties+1, u);
@@ -1647,12 +1709,12 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
 }
 
 
-    
-
-    
 
 
-   
+
+
+
+
 
 
 
@@ -1734,9 +1796,9 @@ EXPORT void MKtGswUEExternMulToMKtLwe_FFT_v2m2(MKTLweSample* result, MKTLweSampl
 
 
 // MUX -> rotate
-// Only the PK part of RLWEkey is used 
-void MKtfhe_MuxRotate_v2m2(MKTLweSample *result, MKTLweSample *accum, const MKTGswUESample_v2* bki, 
-    const int32_t barai, const TLweParams* RLWEparams, const MKTFHEParams* MKparams, const MKRLweKey *RLWEkey) 
+// Only the PK part of RLWEkey is used
+void MKtfhe_MuxRotate_v2m2(MKTLweSample *result, MKTLweSample *accum, const MKTGswUESample_v2* bki,
+    const int32_t barai, const TLweParams* RLWEparams, const MKTFHEParams* MKparams, const MKRLweKey *RLWEkey)
 {
     MKTLweSample *temp_result = new_MKTLweSample(RLWEparams, MKparams);
 
@@ -1755,9 +1817,9 @@ void MKtfhe_MuxRotate_v2m2(MKTLweSample *result, MKTLweSample *accum, const MKTG
 
 
 // MUX -> rotate
-// Only the PK part of RLWEkey is used 
-void MKtfhe_MuxRotateFFT_v2m2(MKTLweSample *result, MKTLweSample *accum, const MKTGswUESampleFFT_v2 *bkiFFT, 
-    const int32_t barai, const TLweParams* RLWEparams, const MKTFHEParams* MKparams, const MKRLweKey *RLWEkey) 
+// Only the PK part of RLWEkey is used
+void MKtfhe_MuxRotateFFT_v2m2(MKTLweSample *result, MKTLweSample *accum, const MKTGswUESampleFFT_v2 *bkiFFT,
+    const int32_t barai, const TLweParams* RLWEparams, const MKTFHEParams* MKparams, const MKRLweKey *RLWEkey)
 {
     MKTLweSample *temp_result = new_MKTLweSample(RLWEparams, MKparams);
 
@@ -1782,9 +1844,9 @@ void MKtfhe_MuxRotateFFT_v2m2(MKTLweSample *result, MKTLweSample *accum, const M
 
 
 // MK Blind rotate
-// Only the PK part of RLWEkey is used 
-EXPORT void MKtfhe_blindRotate_v2m2(MKTLweSample *accum, const MKTGswUESample_v2 *bk, const int32_t *bara, 
-    const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *RLWEkey) 
+// Only the PK part of RLWEkey is used
+EXPORT void MKtfhe_blindRotate_v2m2(MKTLweSample *accum, const MKTGswUESample_v2 *bk, const int32_t *bara,
+    const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *RLWEkey)
 {
     const int32_t parties = MKparams->parties;
     const int32_t n = MKparams->n;
@@ -1793,7 +1855,7 @@ EXPORT void MKtfhe_blindRotate_v2m2(MKTLweSample *accum, const MKTGswUESample_v2
 
     // MKTLweSample *temp1 = accum;
     MKTLweSample *temp1 = new_MKTLweSample(RLWEparams, MKparams);
-    MKtLweCopy(temp1, accum, MKparams);    
+    MKtLweCopy(temp1, accum, MKparams);
 
 
     for (int i = 0; i < parties; ++i)
@@ -1825,10 +1887,10 @@ EXPORT void MKtfhe_blindRotate_v2m2(MKTLweSample *accum, const MKTGswUESample_v2
 
 
 // MK Blind rotate
-// Only the PK part of RLWEkey is used 
-EXPORT void MKtfhe_blindRotateFFT_v2m2(MKTLweSample *accum, const MKTGswUESampleFFT_v2 *bkFFT, 
-    const int32_t *bara, const TLweParams* RLWEparams, const MKTFHEParams *MKparams, 
-    const MKRLweKey *MKrlwekey) 
+// Only the PK part of RLWEkey is used
+EXPORT void MKtfhe_blindRotateFFT_v2m2(MKTLweSample *accum, const MKTGswUESampleFFT_v2 *bkFFT,
+    const int32_t *bara, const TLweParams* RLWEparams, const MKTFHEParams *MKparams,
+    const MKRLweKey *MKrlwekey)
 {
     const int32_t parties = MKparams->parties;
     const int32_t n = MKparams->n;
@@ -1837,7 +1899,7 @@ EXPORT void MKtfhe_blindRotateFFT_v2m2(MKTLweSample *accum, const MKTGswUESample
 
     // MKTLweSample *temp1 = accum;
     MKTLweSample *temp1 = new_MKTLweSample(RLWEparams, MKparams);
-    MKtLweCopy(temp1, accum, MKparams); 
+    MKtLweCopy(temp1, accum, MKparams);
 
 
 
@@ -1849,7 +1911,7 @@ EXPORT void MKtfhe_blindRotateFFT_v2m2(MKTLweSample *accum, const MKTGswUESample
 
             if (baraij == 0) continue; //indeed, this is an easy case!
 
-            MKtfhe_MuxRotateFFT_v2m2(temp, temp1, bkFFT + (n*i+j), baraij, RLWEparams, MKparams, MKrlwekey); 
+            MKtfhe_MuxRotateFFT_v2m2(temp, temp1, bkFFT + (n*i+j), baraij, RLWEparams, MKparams, MKrlwekey);
             swap(temp, temp1);
 
         }
@@ -1889,16 +1951,16 @@ EXPORT void MKtfhe_blindRotateFFT_v2m2(MKTLweSample *accum, const MKTGswUESample
 
 
 
-// MK Blind rotate and extract 
-// Only the PK part of RLWEkey is used 
+// MK Blind rotate and extract
+// Only the PK part of RLWEkey is used
 EXPORT void MKtfhe_blindRotateAndExtract_v2m2(MKLweSample *result,
                                        const TorusPolynomial *v,
                                        const MKTGswUESample_v2 *bk,
                                        const int32_t barb,
                                        const int32_t *bara,
-                                       const TLweParams* RLWEparams, 
+                                       const TLweParams* RLWEparams,
                                        const MKTFHEParams *MKparams,
-                                       const MKRLweKey *RLWEkey) 
+                                       const MKRLweKey *RLWEkey)
 {
     const int32_t N = MKparams->N;
     const int32_t _2N = 2 * N;
@@ -1927,16 +1989,16 @@ EXPORT void MKtfhe_blindRotateAndExtract_v2m2(MKLweSample *result,
 
 
 
-// MK Blind rotate and extract 
-// Only the PK part of RLWEkey is used 
+// MK Blind rotate and extract
+// Only the PK part of RLWEkey is used
 EXPORT void MKtfhe_blindRotateAndExtractFFT_v2m2(MKLweSample *result,
                                        const TorusPolynomial *v,
                                        const MKTGswUESampleFFT_v2 *bkFFT,
                                        const int32_t barb,
                                        const int32_t *bara,
-                                       const TLweParams* RLWEparams, 
-                                       const MKTFHEParams *MKparams, 
-                                       const MKRLweKey *MKrlwekey) 
+                                       const TLweParams* RLWEparams,
+                                       const MKTFHEParams *MKparams,
+                                       const MKRLweKey *MKrlwekey)
 {
     const int32_t N = MKparams->N;
     const int32_t _2N = 2 * N;
@@ -1980,11 +2042,11 @@ EXPORT void MKtfhe_blindRotateAndExtractFFT_v2m2(MKLweSample *result,
 
 
 
-// MK Bootstrap without key switching 
-// Only the PK part of RLWEkey is used 
-EXPORT void MKtfhe_bootstrap_woKS_v2m2(MKLweSample *result, const MKLweBootstrappingKey_v2 *bk, 
+// MK Bootstrap without key switching
+// Only the PK part of RLWEkey is used
+EXPORT void MKtfhe_bootstrap_woKS_v2m2(MKLweSample *result, const MKLweBootstrappingKey_v2 *bk,
         Torus32 mu, const MKLweSample *x, const TLweParams* RLWEparams, const MKTFHEParams *MKparams,
-        const MKRLweKey *RLWEkey) 
+        const MKRLweKey *RLWEkey)
 {
     const int32_t parties = MKparams->parties;
     const int32_t N = MKparams->N;
@@ -2004,15 +2066,15 @@ EXPORT void MKtfhe_bootstrap_woKS_v2m2(MKLweSample *result, const MKLweBootstrap
             bara[n*i+j] = modSwitchFromTorus32(x->a[n*i+j], Nx2);
         }
     }
-    
+
 
     //the initial testvec = [mu,mu,mu,...,mu]
-    for (int32_t i = 0; i < N; i++) 
+    for (int32_t i = 0; i < N; i++)
     {
         testvect->coefsT[i] = mu;
     }
 
-    MKtfhe_blindRotateAndExtract_v2m2(result, testvect, bk->bk, barb, bara, RLWEparams, MKparams, RLWEkey); 
+    MKtfhe_blindRotateAndExtract_v2m2(result, testvect, bk->bk, barb, bara, RLWEparams, MKparams, RLWEkey);
 
 
     delete[] bara;
@@ -2023,11 +2085,11 @@ EXPORT void MKtfhe_bootstrap_woKS_v2m2(MKLweSample *result, const MKLweBootstrap
 
 
 
-// MK Bootstrap without key switching 
-// Only the PK part of RLWEkey is used 
-EXPORT void MKtfhe_bootstrap_woKSFFT_v2m2(MKLweSample *result, const MKLweBootstrappingKeyFFT_v2 *bkFFT, 
-        Torus32 mu, const MKLweSample *x, const TLweParams* RLWEparams, const MKTFHEParams *MKparams, 
-        const MKRLweKey *MKrlwekey) 
+// MK Bootstrap without key switching
+// Only the PK part of RLWEkey is used
+EXPORT void MKtfhe_bootstrap_woKSFFT_v2m2(MKLweSample *result, const MKLweBootstrappingKeyFFT_v2 *bkFFT,
+        Torus32 mu, const MKLweSample *x, const TLweParams* RLWEparams, const MKTFHEParams *MKparams,
+        const MKRLweKey *MKrlwekey)
 {
     const int32_t parties = MKparams->parties;
     const int32_t N = MKparams->N;
@@ -2047,10 +2109,10 @@ EXPORT void MKtfhe_bootstrap_woKSFFT_v2m2(MKLweSample *result, const MKLweBootst
             bara[n*i+j] = modSwitchFromTorus32(x->a[n*i+j], Nx2);
         }
     }
-    
+
 
     //the initial testvec = [mu,mu,mu,...,mu]
-    for (int32_t i = 0; i < N; i++) 
+    for (int32_t i = 0; i < N; i++)
     {
         testvect->coefsT[i] = mu;
     }
@@ -2074,15 +2136,15 @@ EXPORT void MKtfhe_bootstrap_woKSFFT_v2m2(MKLweSample *result, const MKLweBootst
 
 
 // MK Bootstrap
-// Only the PK part of RLWEkey is used 
-EXPORT void MKtfhe_bootstrap_v2m2(MKLweSample *result, const MKLweBootstrappingKey_v2 *bk, Torus32 mu, 
-        const MKLweSample *x, const LweParams* LWEparams, const LweParams* extractedLWEparams, 
-        const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *RLWEkey) 
+// Only the PK part of RLWEkey is used
+EXPORT void MKtfhe_bootstrap_v2m2(MKLweSample *result, const MKLweBootstrappingKey_v2 *bk, Torus32 mu,
+        const MKLweSample *x, const LweParams* LWEparams, const LweParams* extractedLWEparams,
+        const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *RLWEkey)
 {
     MKLweSample *u = new_MKLweSample(extractedLWEparams, MKparams);
 
     MKtfhe_bootstrap_woKS_v2m2(u, bk, mu, x, RLWEparams, MKparams, RLWEkey);
-    
+
     // MK Key Switching
     //MKlweKeySwitch(result, bk->ks, u, MKparams);
     MKlweKeySwitch(result, bk->ks, u, LWEparams, MKparams);
@@ -2095,10 +2157,10 @@ EXPORT void MKtfhe_bootstrap_v2m2(MKLweSample *result, const MKLweBootstrappingK
 
 
 // MK Bootstrap
-// Only the PK part of RLWEkey is used 
-EXPORT void MKtfhe_bootstrapFFT_v2m2(MKLweSample *result, const MKLweBootstrappingKeyFFT_v2 *bkFFT, Torus32 mu, 
-        const MKLweSample *x, const LweParams* LWEparams, const LweParams* extractedLWEparams, 
-        const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *MKrlwekey) 
+// Only the PK part of RLWEkey is used
+EXPORT void MKtfhe_bootstrapFFT_v2m2(MKLweSample *result, const MKLweBootstrappingKeyFFT_v2 *bkFFT, Torus32 mu,
+        const MKLweSample *x, const LweParams* LWEparams, const LweParams* extractedLWEparams,
+        const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *MKrlwekey)
 {
     MKLweSample *u = new_MKLweSample(extractedLWEparams, MKparams);
 
@@ -2123,11 +2185,11 @@ EXPORT void MKtfhe_bootstrapFFT_v2m2(MKLweSample *result, const MKLweBootstrappi
 
 
 
-// MK Bootstrapped NAND 
-// Only the PK part of RLWEkey is used 
-EXPORT void MKbootsNAND_v2m2(MKLweSample *result, const MKLweSample *ca, const MKLweSample *cb, 
-        const MKLweBootstrappingKey_v2 *bk, const LweParams* LWEparams, const LweParams *extractedLWEparams, 
-        const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *RLWEkey) 
+// MK Bootstrapped NAND
+// Only the PK part of RLWEkey is used
+EXPORT void MKbootsNAND_v2m2(MKLweSample *result, const MKLweSample *ca, const MKLweSample *cb,
+        const MKLweBootstrappingKey_v2 *bk, const LweParams* LWEparams, const LweParams *extractedLWEparams,
+        const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *RLWEkey)
 {
     static const Torus32 MU = modSwitchToTorus32(1, 8);
 
@@ -2152,11 +2214,11 @@ EXPORT void MKbootsNAND_v2m2(MKLweSample *result, const MKLweSample *ca, const M
 
 
 
-// MK Bootstrapped NAND 
-// Only the PK part of RLWEkey is used 
-EXPORT void MKbootsNAND_FFT_v2m2(MKLweSample *result, const MKLweSample *ca, const MKLweSample *cb, 
-        const MKLweBootstrappingKeyFFT_v2 *bkFFT, const LweParams* LWEparams, const LweParams *extractedLWEparams, 
-        const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *MKrlwekey) 
+// MK Bootstrapped NAND
+// Only the PK part of RLWEkey is used
+EXPORT void MKbootsNAND_FFT_v2m2(MKLweSample *result, const MKLweSample *ca, const MKLweSample *cb,
+        const MKLweBootstrappingKeyFFT_v2 *bkFFT, const LweParams* LWEparams, const LweParams *extractedLWEparams,
+        const TLweParams* RLWEparams, const MKTFHEParams *MKparams, const MKRLweKey *MKrlwekey)
 {
     static const Torus32 MU = modSwitchToTorus32(1, 8);
 
@@ -2171,7 +2233,7 @@ EXPORT void MKbootsNAND_FFT_v2m2(MKLweSample *result, const MKLweSample *ca, con
 
     //if the phase is positive, the result is 1/8
     //if the phase is positive, else the result is -1/8
-    MKtfhe_bootstrapFFT_v2m2(result, bkFFT, MU, temp_result, LWEparams, extractedLWEparams, RLWEparams, MKparams, MKrlwekey);   
+    MKtfhe_bootstrapFFT_v2m2(result, bkFFT, MU, temp_result, LWEparams, extractedLWEparams, RLWEparams, MKparams, MKrlwekey);
 
     delete_MKLweSample(temp_result);
 }
