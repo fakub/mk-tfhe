@@ -24,7 +24,7 @@
 EXPORT void MKlweSymEncrypt(MKLweSample* result, Torus32 message, double alpha, const MKLweKey* key);
 
 /**
- * Initialize ciphertext with encryption using p-th party key.
+ * Initialize sample with encryption using p-th party key.
  * Fill other blocks with zeros.
  */
 EXPORT void MKlweFirstPartyEncrypt(MKLweSample *const result,
@@ -34,14 +34,31 @@ EXPORT void MKlweFirstPartyEncrypt(MKLweSample *const result,
                                    const MKLweKey *const key);
 
 /**
- * Add another layer of encryption using p-th party key.
+ * Add another layer of encryption using p-th party key to an existing sample.
  * Fills its associated block and adds its mask and noise to b.
  */
-EXPORT void MKlweNthPartyEncrypt(MKLweSample *const result,
+EXPORT void MKlweNthPartyEncrypt(MKLweSample *const sample,
                                  const int32_t party_index,   // p
                                  const Torus32 message,
                                  const double alpha,
                                  const MKLweKey *const key);
+
+/**
+ *  Eliminates p-th block of mask: sets the block to zero and subtracts its <a_p,s_p> product from b.
+ */
+EXPORT void MKlweNthPartyUnmask(MKLweSample *const sample,
+                                const int32_t p,   // party index
+                                const MKLweKey *const key);
+
+/**
+ *  Unmasks last block and rounds the result appropriately.
+ */
+EXPORT Torus32 MKlweLastPartyDecrypt(const MKLweSample *const sample,
+                                     const int32_t p,   // party index
+                                     const MKLweKey *const key,
+                                     const int32_t Msize);
+
+// -----------------------------------------------------------------------------
 
 EXPORT void MKlweSymEncryptWithExternalNoise(MKLweSample* result, Torus32 message, double noise, double alpha,
         const MKLweKey* key);
