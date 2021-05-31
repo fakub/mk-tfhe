@@ -57,10 +57,10 @@ EXPORT void MKlweSymEncrypt(MKLweSample* result, Torus32 message, double alpha, 
 
 
 
-// b = <a_p,s_p> + m + e   for party p
+// b = <a_p,s_p> + m + e   for position p
 // m comes with a scaling factor
 EXPORT void MKlweFirstPartyEncrypt(MKLweSample *const sample,
-                                   const int32_t p,   // party index
+                                   const int32_t p,   // position index
                                    const Torus32 message,
                                    const double alpha,
                                    const LweKey *const key)
@@ -95,10 +95,10 @@ EXPORT void MKlweFirstPartyEncrypt(MKLweSample *const sample,
 #endif
 }
 
-// b = <a_p,s_p> + m + e   for party p
+// b = <a_p,s_p> + m + e   for position p
 // m comes with a scaling factor
 EXPORT void MKlweNthPartyEncrypt(MKLweSample *const sample,
-                                 const int32_t p,   // party index
+                                 const int32_t p,   // position index
                                  const double alpha,
                                  const LweKey *const key)
 {
@@ -118,9 +118,9 @@ EXPORT void MKlweNthPartyEncrypt(MKLweSample *const sample,
     }
 }
 
-// remove p-th party mask
+// remove p-th position mask
 EXPORT void MKlweNthPartyUnmask(MKLweSample *const sample,
-                                const int32_t p,   // party index
+                                const int32_t p,   // position index
                                 const double alpha,
                                 const LweKey *const key)
 {
@@ -141,9 +141,9 @@ EXPORT void MKlweNthPartyUnmask(MKLweSample *const sample,
     sample->current_variance += alpha*alpha;
 }
 
-// decrypt by removing the last party's mask
+// decrypt by removing the last position's mask
 EXPORT Torus32 MKlweLastPartyDecrypt(MKLweSample *const sample,
-                                     const int32_t p,   // party index
+                                     const int32_t p,   // position index
                                      const LweKey *const key,
                                      const int32_t Msize)
 {
@@ -172,6 +172,17 @@ EXPORT Torus32 MKlweLastPartyDecrypt(MKLweSample *const sample,
     }
 
     return approxPhase(sample->b, Msize);
+}
+
+// change key at p-th position
+EXPORT void MKlweChangeKey(MKLweSample *const sample,
+                           const int32_t p,   // position index
+                           const double alpha,
+                           const LweKey *const key_remove,
+                           const LweKey *const key_add)
+{
+    MKlweNthPartyUnmask( sample, p, 0.0,   key_remove);
+    MKlweNthPartyEncrypt(sample, p, alpha, key_add);
 }
 
 

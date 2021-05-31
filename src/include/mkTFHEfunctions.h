@@ -31,7 +31,7 @@ EXPORT void MKlweSymEncrypt(MKLweSample* result, Torus32 message, double alpha, 
  *  From MKLweKey * mklk, you get LweKey * key as: mklk->key[p]
  */
 EXPORT void MKlweFirstPartyEncrypt(MKLweSample *const result,
-                                   const int32_t p,   // party index
+                                   const int32_t p,   // position index
                                    const Torus32 message,
                                    const double alpha,
                                    const LweKey *const key);
@@ -42,7 +42,7 @@ EXPORT void MKlweFirstPartyEncrypt(MKLweSample *const result,
  *  From MKLweKey * mklk, you get LweKey * key as: mklk->key[p]
  */
 EXPORT void MKlweNthPartyEncrypt(MKLweSample *const sample,
-                                 const int32_t p,   // party index
+                                 const int32_t p,   // position index
                                  const double alpha,
                                  const LweKey *const key);
 
@@ -52,7 +52,7 @@ EXPORT void MKlweNthPartyEncrypt(MKLweSample *const sample,
  *  From MKLweKey * mklk, you get LweKey * key as: mklk->key[p]
  */
 EXPORT void MKlweNthPartyUnmask(MKLweSample *const sample,
-                                const int32_t p,   // party index
+                                const int32_t p,   // position index
                                 const double alpha,
                                 const LweKey *const key);
 
@@ -61,9 +61,19 @@ EXPORT void MKlweNthPartyUnmask(MKLweSample *const sample,
  *  From MKLweKey * mklk, you get LweKey * key as: mklk->key[p]
  */
 EXPORT Torus32 MKlweLastPartyDecrypt(MKLweSample *const sample,
-                                     const int32_t p,   // party index
+                                     const int32_t p,   // position index
                                      const LweKey *const key,
                                      const int32_t Msize);
+
+/**
+ *  Replace key at p-th position.
+ *  From MKLweKey * mklk, you get LweKey * key_remove/add/ as: mklk->key[p]
+ */
+EXPORT void MKlweChangeKey(MKLweSample *const sample,
+                           const int32_t p,   // position index
+                           const double alpha,
+                           const LweKey *const key_remove,
+                           const LweKey *const key_add);
 
 // -----------------------------------------------------------------------------
 
